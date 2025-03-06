@@ -1,11 +1,29 @@
 from flask import Flask, request, jsonify
-import random
 from db import insert_tweet, get_all_tweets
+import pickle
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+try:
+    with open("sentiment_model.pkl", "rb") as model_file:
+        models = pickle.load(model_file)
+
+    with open("vectorizer.pkl", "rb") as vec_file:
+        vectorizer = pickle.load(vec_file)
+    
+    print("modèle et vectoriseur chargés avec succès")
+except FileNotFoundError:
+    print("modèle ou vectoriseur non trouvé. Veuillez exécuter model.py pour entraîner le modèle")
+    models = None
+    vectorizer = None
 
 app = Flask(__name__)
 
 @app.route('/analyze', methods=['POST'])
 def analyze_sentiment():
+    if models is None or vectorizer is None:
+        return jsonify({"error": "le modèle n'est pas chargé"}), 500
+
     data = request.get_json()
 
     if not data or "tweets" not in data:
@@ -16,15 +34,14 @@ def analyze_sentiment():
     if not isinstance(tweets, list) or not all(isinstance(t, str) for t in tweets):
         return jsonify({"error": "format invalide, tweets doit être une liste de chaînes"}), 400
 
-    results = {}
-    for tweet in tweets:
-        score = round(random.uniform(-1, 1), 2)
-        positive = 1 if score > 0 else 0
-        negative = 1 if score < 0 else 0
+    X_input = vectorizer.transform(tweets)
+    
+    positive_scores = models['positive'].predict_proba(X_input)[:, 1]
+    negative_scores = models['negative'].predict_proba(X_input)[:, 1]
 
-        insert_tweet(tweet, positive, negative)
+    final_scores = positive_scores - negative_scores
 
-        results[tweet] = score
+    results = {tweet: round(float(score), 2) for tweet, score in zip(tweets, final_scores)}
 
     return jsonify(results)
 
