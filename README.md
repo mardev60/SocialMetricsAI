@@ -34,32 +34,60 @@ L'API permet d'évaluer le sentiment des tweets en fonction de leur contenu, en 
    ```
 
 3. Configurer la base de données :
-   - Modifier les paramètres de connexion dans `config.py`
+   - Modifier les paramètres de connexion dans `src/database/config.py`
    - Exécuter le script de configuration de la base de données :
      ```
-     python setup_db.py
+     python -m src.database.setup_db
      ```
 
 4. Entraîner le modèle initial :
    ```
-   python model.py
+   python -m src.models.sentiment_model
    ```
 
 5. Lancer l'API :
    ```
-   python api.py
+   python main.py
    ```
 
 ## Structure du projet
 
-- `api.py` : Implémentation de l'API Flask
-- `db.py` : Gestion de la connexion à la base de données MySQL
-- `model.py` : Entraînement et évaluation du modèle de machine learning
-- `retrain.py` : Script pour le réentraînement automatique du modèle
-- `setup_db.py` : Configuration de la base de données
-- `config.py` : Configuration de la base de données
-- `reports/` : Dossier contenant les rapports d'évaluation générés
-- `logs/` : Dossier contenant les logs de réentraînement
+```
+SocialMetricsAI/
+├── data/
+│   ├── models/           # Modèles entraînés
+│   └── reports/          # Rapports d'évaluation générés
+├── logs/                 # Logs de réentraînement
+├── src/
+│   ├── api/              # Implémentation de l'API Flask
+│   │   ├── __init__.py
+│   │   └── app.py
+│   ├── database/         # Gestion de la base de données
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   └── setup_db.py
+│   ├── models/           # Modèles de machine learning
+│   │   ├── __init__.py
+│   │   └── sentiment_model.py
+│   ├── scripts/          # Scripts utilitaires
+│   │   ├── __init__.py
+│   │   ├── generate_dataset.py
+│   │   ├── generate_dataset_v2.py
+│   │   ├── retrain.py
+│   │   └── setup_cron.py
+│   └── utils/            # Utilitaires divers
+│       ├── __init__.py
+│       └── evaluation_report_template.md
+├── tests/                # Tests unitaires et d'intégration
+│   ├── __init__.py
+│   ├── test_direct.py
+│   ├── test_model.py
+│   └── test_sentiment.py
+├── main.py               # Point d'entrée principal
+├── setup.py              # Configuration du package
+└── requirements.txt      # Dépendances du projet
+```
 
 ## Utilisation de l'API
 
@@ -110,7 +138,7 @@ Après chaque entraînement, le système génère :
 - Une analyse des forces, faiblesses et biais potentiels du modèle
 - Des recommandations pour améliorer les performances
 
-Ces rapports sont stockés dans le dossier `reports/`.
+Ces rapports sont stockés dans le dossier `data/reports/`.
 
 ## Licence
 

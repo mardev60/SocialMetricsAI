@@ -5,8 +5,11 @@ from crontab import CronTab
 
 def setup_cron_job():
     try:
-        current_dir = os.path.abspath(os.path.dirname(__file__))
-        retrain_script = os.path.join(current_dir, 'retrain.py')
+        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        retrain_script = os.path.join(current_dir, 'src', 'scripts', 'retrain.py')
+        logs_dir = os.path.join(current_dir, 'logs')
+        
+        os.makedirs(logs_dir, exist_ok=True)
         
         os.chmod(retrain_script, 0o755)
         
@@ -18,7 +21,7 @@ def setup_cron_job():
             cron.remove(job)
             print("Ancien cronjob supprimé.")
 
-        job = cron.new(command=f'{retrain_script} >> {current_dir}/logs/cron.log 2>&1')
+        job = cron.new(command=f'{retrain_script} >> {logs_dir}/cron.log 2>&1')
         job.setall('0 3 * * 0')
         job.set_comment('SocialMetricsAI model retraining')
         
