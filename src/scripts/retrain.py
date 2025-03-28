@@ -3,6 +3,7 @@ import sys
 import logging
 from datetime import datetime
 from src.models.sentiment_model import train_model
+from src.scripts.generate_report import generate_pdf_report
 
 log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'logs')
 os.makedirs(log_dir, exist_ok=True)
@@ -28,6 +29,24 @@ def main():
             return False
         
         logging.info("modele reentraine avec succes")
+        
+        # Générer automatiquement le rapport PDF
+        logging.info("Generation du rapport PDF...")
+        try:
+            reports_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "reports")
+            os.makedirs(reports_dir, exist_ok=True)
+            
+            # Définir le nom du fichier avec un timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pdf_path = os.path.join(reports_dir, f"rapport_sentiment_analysis_{timestamp}.pdf")
+            
+            # Générer le rapport PDF
+            report_path = generate_pdf_report(pdf_path)
+            logging.info(f"Rapport PDF généré avec succès: {report_path}")
+        except Exception as e:
+            logging.error(f"Erreur lors de la génération du rapport PDF: {str(e)}")
+            # Ne pas faire échouer l'entraînement si la génération du rapport échoue
+        
         return True
     
     except Exception as e:

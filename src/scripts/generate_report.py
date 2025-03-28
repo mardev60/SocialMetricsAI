@@ -1,74 +1,58 @@
-from flask import Flask, request, jsonify, send_file
-from src.database.database import insert_tweet, get_all_tweets
-import pickle
+#!/usr/bin/env python
+"""
+Script pour générer un rapport PDF d'analyse de sentiments.
+Ce script crée un PDF contenant une matrice de confusion et d'autres métriques.
+"""
 import os
-from src.models.sentiment_model import analyze_sentiment_text
+import sys
 import io
+import pickle
 import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Utiliser le backend non-interactif
+
+# Ajouter le répertoire parent au chemin pour permettre d'importer les modules du projet
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
-import matplotlib
-matplotlib.use('Agg')  # Utiliser le backend non-interactif
+from src.database.database import get_all_tweets
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "models", "sentiment_model.pkl")
-VECTORIZER_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "models", "vectorizer.pkl")
-
-try:
-    with open(MODEL_PATH, "rb") as model_file:
-        models = pickle.load(model_file)
-
-    with open(VECTORIZER_PATH, "rb") as vec_file:
-        vectorizer = pickle.load(vec_file)
+def generate_pdf_report(output_path=None):
+    """
+    Génère un rapport PDF contenant la matrice de confusion et d'autres métriques.
     
-    print("modèle et vectoriseur chargés avec succès")
-except FileNotFoundError:
-    print("modèle ou vectoriseur non trouvé. Veuillez exécuter src/models/sentiment_model.py pour entraîner le modèle")
-    models = None
-    vectorizer = None
-
-app = Flask(__name__)
-
-@app.route('/analyze', methods=['POST'])
-def analyze_sentiment():
-    if models is None or vectorizer is None:
-        return jsonify({"error": "le modèle n'est pas chargé"}), 500
-
-    data = request.get_json()
-
-    if not data or "tweets" not in data:
-        return jsonify({"error": "liste de tweets requise"}), 400
-
-    tweets = data["tweets"]
-
-    if not isinstance(tweets, list) and isinstance(tweets, dict):
-        tweets = list(tweets.keys())
-    elif not isinstance(tweets, list) or not all(isinstance(t, str) for t in tweets):
-        return jsonify({"error": "format invalide, tweets doit être une liste de chaînes"}), 400
-
-    results = {}
-    for tweet in tweets:
-        score = analyze_sentiment_text(tweet, models, vectorizer)
-        results[tweet] = score
-
-    return jsonify(results)
-
-@app.route('/tweets', methods=['GET'])
-def get_tweets():
-    tweets = get_all_tweets()
-    return jsonify(tweets)
-
-@app.route('/generate_report', methods=['GET'])
-def generate_report():
-    """Génère un rapport PDF contenant la matrice de confusion et d'autres métriques."""
-    if models is None or vectorizer is None:
-        return jsonify({"error": "le modèle n'est pas chargé"}), 500
+    Args:
+        output_path (str, optional): Chemin où sauvegarder le PDF. 
+                                     Si None, le fichier sera sauvegardé dans le répertoire reports.
+    
+    Returns:
+        str: Le chemin vers le fichier PDF généré.
+    """
+    # Définir le chemin de sortie par défaut si non spécifié
+    if output_path is None:
+        reports_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        output_path = os.path.join(reports_dir, "rapport_sentiment_analysis.pdf")
     
     # Récupérer les tweets de la base de données
     tweets = get_all_tweets()
+    
+    # Utiliser des données d'exemple si aucun tweet n'est disponible
+    use_example_data = len(tweets) == 0
+    if use_example_data:
+        tweets = [
+            {"id": 1, "text": "J'adore ce produit, il est fantastique!", "positive": 0.92, "negative": 0.08},
+            {"id": 2, "text": "Le service client est très réactif et professionnel.", "positive": 0.87, "negative": 0.13},
+            {"id": 3, "text": "Expérience décevante, je ne recommande pas.", "positive": 0.15, "negative": 0.85},
+            {"id": 4, "text": "Produit de qualité moyenne, peut mieux faire.", "positive": 0.45, "negative": 0.55},
+            {"id": 5, "text": "Super expérience, je suis totalement satisfait!", "positive": 0.95, "negative": 0.05},
+            {"id": 6, "text": "Livraison en retard et produit endommagé.", "positive": 0.08, "negative": 0.92},
+            {"id": 7, "text": "Rapport qualité-prix imbattable.", "positive": 0.89, "negative": 0.11},
+            {"id": 8, "text": "Interface utilisateur complexe et difficile à utiliser.", "positive": 0.20, "negative": 0.80}
+        ]
     
     # Créer un buffer pour le PDF
     buffer = io.BytesIO()
@@ -84,7 +68,10 @@ def generate_report():
     story.append(Spacer(1, 12))
     
     # Ajouter une introduction
-    intro = Paragraph("Ce rapport présente les résultats de l'analyse de sentiments sur les tweets stockés dans la base de données.", styles['Normal'])
+    intro_text = "Ce rapport présente les résultats de l'analyse de sentiments sur les tweets stockés dans la base de données."
+    if use_example_data:
+        intro_text += " <i>Note: Ce rapport utilise des données d'exemple car aucun tweet n'a été trouvé dans la base de données.</i>"
+    intro = Paragraph(intro_text, styles['Normal'])
     story.append(intro)
     story.append(Spacer(1, 12))
     
@@ -93,6 +80,14 @@ def generate_report():
         # Compter les tweets positifs et négatifs
         positive_count = sum(1 for tweet in tweets if tweet['positive'] > tweet['negative'])
         negative_count = len(tweets) - positive_count
+        
+        # Ajouter un résumé des statistiques
+        stats_text = f"Nombre total de tweets analysés: {len(tweets)}<br/>"
+        stats_text += f"Tweets positifs: {positive_count} ({positive_count/len(tweets)*100:.1f}%)<br/>"
+        stats_text += f"Tweets négatifs: {negative_count} ({negative_count/len(tweets)*100:.1f}%)"
+        stats = Paragraph(stats_text, styles['Normal'])
+        story.append(stats)
+        story.append(Spacer(1, 12))
         
         # Créer un graphique à barres pour les sentiments
         plt.figure(figsize=(6, 4))
@@ -112,6 +107,8 @@ def generate_report():
         story.append(Spacer(1, 12))
         
         # Créer une matrice de confusion simple
+        # Pour une vraie matrice de confusion, nous aurions besoin des valeurs réelles (ground truth)
+        # Ici, on simplifie en supposant que tous les tweets sont correctement classifiés
         confusion_matrix = [
             ['', 'Prédit Positif', 'Prédit Négatif'],
             ['Réel Positif', positive_count, 0],
@@ -122,6 +119,16 @@ def generate_report():
         matrix_title = Paragraph("Matrice de confusion (simplifiée)", styles['Heading2'])
         story.append(matrix_title)
         story.append(Spacer(1, 6))
+        
+        # Ajouter une explication de la matrice
+        matrix_explanation = Paragraph(
+            "Cette matrice de confusion est simplifiée car nous ne disposons pas des véritables étiquettes pour tous les tweets. "
+            "Elle suppose que tous les tweets ont été correctement classifiés par le modèle. Dans un cas réel, "
+            "les valeurs hors diagonale représenteraient les erreurs de classification.",
+            styles['Normal']
+        )
+        story.append(matrix_explanation)
+        story.append(Spacer(1, 12))
         
         # Créer une table pour la matrice de confusion
         matrix_table = Table(confusion_matrix)
@@ -176,25 +183,17 @@ def generate_report():
     # Construire le PDF
     doc.build(story)
     
-    # Préparer le buffer pour l'envoi
-    buffer.seek(0)
-    
-    # Créer le répertoire reports s'il n'existe pas
-    reports_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "reports")
-    os.makedirs(reports_dir, exist_ok=True)
-    
     # Sauvegarder le PDF sur le disque
-    pdf_path = os.path.join(reports_dir, "rapport_sentiment_analysis.pdf")
-    with open(pdf_path, 'wb') as f:
+    with open(output_path, 'wb') as f:
         f.write(buffer.getvalue())
     
-    # Retourner le PDF
-    return send_file(
-        io.BytesIO(buffer.getvalue()),
-        mimetype='application/pdf',
-        as_attachment=True,
-        download_name='rapport_sentiment_analysis.pdf'
-    )
+    print(f"Rapport PDF généré avec succès : {output_path}")
+    return output_path
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    # Permettre de spécifier un chemin de sortie en argument
+    output_path = None
+    if len(sys.argv) > 1:
+        output_path = sys.argv[1]
+    
+    generate_pdf_report(output_path) 

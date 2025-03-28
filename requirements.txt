@@ -6,3 +6,5 @@ pandas==2.1.1
 matplotlib==3.8.0
 seaborn==0.13.0
 python-crontab==3.0.0
+reportlab==4.0.5
+nltk==3.8.1

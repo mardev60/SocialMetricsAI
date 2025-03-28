@@ -12,6 +12,7 @@ L'API permet d'évaluer le sentiment des tweets en fonction de leur contenu, en 
 - **Prétraitement du texte** : Tokenization, normalisation et gestion des contractions françaises
 - **Réentraînement automatique** : Mécanisme de réentraînement hebdomadaire du modèle
 - **Rapports d'évaluation** : Génération de matrices de confusion et métriques de performance
+- **Export PDF** : Génération de rapports PDF contenant la matrice de confusion et les statistiques d'analyse de sentiments
 
 ## Prérequis
 
@@ -192,6 +193,41 @@ SocialMetricsAI/
 }
 ```
 
+### Générer un rapport PDF
+
+**Endpoint** : `GET /generate_report`
+
+Cette requête génère et télécharge un rapport PDF contenant :
+- Une matrice de confusion pour les tweets analysés
+- Des statistiques sur les sentiments détectés
+- Un graphique de répartition des sentiments
+- Des exemples de tweets analysés avec leur score
+
+Vous pouvez accéder directement à cet endpoint depuis votre navigateur en visitant : 
+`http://localhost:5000/generate_report`
+
+### Génération de rapport PDF en ligne de commande
+
+Vous pouvez également générer un rapport PDF en utilisant le script en ligne de commande :
+
+```bash
+# Avec Docker
+docker-compose exec web python -m src.scripts.generate_report
+
+# Installation manuelle
+python -m src.scripts.generate_report
+```
+
+Le rapport sera généré dans le répertoire `reports/` par défaut, mais vous pouvez spécifier un chemin personnalisé :
+
+```bash
+# Avec Docker
+docker-compose exec web python -m src.scripts.generate_report /chemin/vers/mon_rapport.pdf
+
+# Installation manuelle
+python -m src.scripts.generate_report /chemin/vers/mon_rapport.pdf
+```
+
 ### Ajouter un tweet annoté
 
 **Endpoint** : `POST /add_tweet`
@@ -216,8 +252,39 @@ Après chaque entraînement, le système génère :
 - Un rapport détaillé avec les métriques de performance (précision, rappel, F1-score)
 - Une analyse des forces, faiblesses et biais potentiels du modèle
 - Des recommandations pour améliorer les performances
+- **Un rapport PDF automatique** contenant la matrice de confusion et des statistiques d'analyse de sentiments
 
-Ces rapports sont stockés dans le dossier `data/reports/`.
+Ces rapports sont stockés dans le dossier `data/reports/` et les PDF dans le dossier `reports/`.
+
+### Génération de rapport PDF
+
+Le système génère automatiquement un rapport PDF après chaque entraînement ou réentraînement du modèle. Ce rapport contient:
+- Une matrice de confusion pour les tweets analysés
+- Des statistiques sur les sentiments détectés
+- Un graphique de répartition des sentiments
+- Des exemples de tweets analysés avec leur score
+
+Si vous souhaitez générer un rapport PDF sans réentraîner le modèle, vous pouvez utiliser le script `generate_report_only.py`:
+
+```bash
+# Avec Docker
+docker-compose exec web python -m src.scripts.generate_report_only
+
+# Installation manuelle
+python -m src.scripts.generate_report_only
+```
+
+Le rapport sera généré dans le répertoire `reports/` avec un timestamp dans le nom du fichier.
+
+Vous pouvez également spécifier un chemin personnalisé pour le rapport:
+
+```bash
+# Avec Docker
+docker-compose exec web python -m src.scripts.generate_report_only /chemin/vers/mon_rapport.pdf
+
+# Installation manuelle
+python -m src.scripts.generate_report_only /chemin/vers/mon_rapport.pdf
+```
 
 ## Résolution des problèmes courants
 
