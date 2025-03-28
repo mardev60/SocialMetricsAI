@@ -21,7 +21,7 @@ def main():
     logging.info("debut du reentrainement du modele...")
     
     try:
-        models, vectorizer = train_model()
+        models, vectorizer, embeddings = train_model()
         
         if models is None or vectorizer is None:
             logging.error("echec de l'entrainement du modele, aucune donnee disponible")

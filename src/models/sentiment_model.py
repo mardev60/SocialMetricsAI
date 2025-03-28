@@ -2,37 +2,107 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, classification_report
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.compose import ColumnTransformer
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 import os
 import re
+import nltk
+import unicodedata
 from datetime import datetime
 from src.database.database import get_all_tweets
 
+# Télécharger les ressources NLTK nécessaires
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt', quiet=True)
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords', quiet=True)
+
+# Variables globales et chemins
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "models")
 REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "reports")
 MODEL_PATH = os.path.join(MODEL_DIR, "sentiment_model.pkl")
 VECTORIZER_PATH = os.path.join(MODEL_DIR, "vectorizer.pkl")
+EMBEDDINGS_PATH = os.path.join(MODEL_DIR, "embeddings.pkl")
+
+# Liste des stopwords français
+try:
+    from nltk.corpus import stopwords
+    STOPWORDS = set(stopwords.words('french'))
+except:
+    STOPWORDS = {'le', 'la', 'les', 'un', 'une', 'des', 'et', 'ou', 'mais', 'donc', 'car', 'ni', 
+                'ce', 'cette', 'ces', 'mon', 'ton', 'son', 'ma', 'ta', 'sa', 'mes', 'tes', 'ses',
+                'notre', 'votre', 'leur', 'nos', 'vos', 'leurs', 'du', 'de', 'à', 'au', 'aux',
+                'en', 'dans', 'sur', 'sous', 'par', 'pour', 'avec', 'sans', 'chez'}
+
+def normalize_text(text):
+    """Normalise le texte (accents, casse, caractères spéciaux)"""
+    # Normaliser les accents et caractères spéciaux
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+    # Mettre en minuscule
+    text = text.lower()
+    # Remplacer les URL par un token spécial
+    text = re.sub(r'https?://\S+|www\.\S+', ' URL ', text)
+    # Remplacer les mentions par un token spécial
+    text = re.sub(r'@\w+', ' MENTION ', text)
+    # Remplacer les hashtags par un token spécial tout en gardant le texte
+    text = re.sub(r'#(\w+)', r' HASHTAG \1', text)
+    # Remplacer les emojis courants par des descriptions
+    text = re.sub(r'[😊😃😄😁]', ' positiveemoji ', text)
+    text = re.sub(r'[😢😭😞😔]', ' negativeemoji ', text)
+    # Gérer les répétitions de ponctuation
+    text = re.sub(r'([!?])\1+', r'\1', text)
+    # Ajouter des espaces autour de la ponctuation
+    text = re.sub(r'([.,!?()])', r' \1 ', text)
+    # Supprimer les caractères non alphanumériques ou de ponctuation
+    text = re.sub(r'[^\w\s.,!?()\']', ' ', text)
+    # Supprimer les espaces multiples
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 def preprocess_french_text(text):
-    text = text.lower()
-    text = re.sub(r"c'est", "cest", text)
-    text = re.sub(r"j'ai", "jai", text)
-    text = re.sub(r"n'ai", "nai", text)
-    text = re.sub(r"n'a", "na", text)
-    text = re.sub(r"n'est", "nest", text)
-    text = re.sub(r"d'un", "dun", text)
-    text = re.sub(r"d'une", "dune", text)
-    text = re.sub(r"l'on", "lon", text)
-    text = re.sub(r"qu'il", "quil", text)
-    text = re.sub(r"qu'elle", "quelle", text)
-    text = re.sub(r"qu'on", "quon", text)
-    text = re.sub(r'[!]{2,}', '!', text)
-    text = re.sub(r'[?]{2,}', '?', text)
-    return text
+    """Prétraitement spécifique pour le français"""
+    # Normalisation de base
+    text = normalize_text(text)
+    
+    # Traitement spécifique des contractions en français
+    contractions = {
+        "c'est": "cest", "c est": "cest",
+        "j'ai": "jai", "j ai": "jai",
+        "n'ai": "nai", "n ai": "nai",
+        "n'a": "na", "n a": "na",
+        "n'est": "nest", "n est": "nest",
+        "d'un": "dun", "d un": "dun",
+        "d'une": "dune", "d une": "dune",
+        "l'on": "lon", "l on": "lon",
+        "qu'il": "quil", "qu il": "quil",
+        "qu'elle": "quelle", "qu elle": "quelle",
+        "qu'on": "quon", "qu on": "quon",
+        "m'a": "ma", "m a": "ma",
+        "s'est": "sest", "s est": "sest",
+        "l'a": "la", "l a": "la"
+    }
+    
+    for contraction, replacement in contractions.items():
+        text = text.replace(contraction, replacement)
+    
+    # Tokenization et suppression des stopwords
+    words = nltk.word_tokenize(text)
+    # Garder certains mots négatifs importants pour l'analyse de sentiment
+    important_negation_words = {'ne', 'pas', 'plus', 'jamais', 'aucun', 'sans'}
+    filtered_words = [w for w in words if (w not in STOPWORDS or w in important_negation_words)]
+    
+    return ' '.join(filtered_words)
 
 def detect_sentiment_keywords(text):
     text_lower = text.lower()
@@ -258,122 +328,206 @@ def detect_sentiment_keywords(text):
     
     return max(-1.0, min(1.0, total_score))
 
-def analyze_sentiment_text(text, models, vectorizer):
+def create_ensemble_model():
+    """Crée un modèle d'ensemble combinant plusieurs classifieurs"""
+    # Logistic Regression (modèle de base)
+    log_reg = LogisticRegression(max_iter=1000, class_weight='balanced')
+    
+    # Random Forest (bon pour les relations non linéaires)
+    rf = RandomForestClassifier(n_estimators=100, class_weight='balanced')
+    
+    # Gradient Boosting (généralement performant)
+    gb = GradientBoostingClassifier(n_estimators=100)
+    
+    # Créer un ensemble (Voting Classifier)
+    ensemble = VotingClassifier(
+        estimators=[
+            ('logistic', log_reg),
+            ('random_forest', rf),
+            ('gradient_boosting', gb)
+        ],
+        voting='soft'  # Utiliser les probabilités
+    )
+    
+    return ensemble
+
+def analyze_sentiment_text(text, models, vectorizer, embeddings=None):
+    """Analyse le sentiment d'un texte en combinant le modèle ML et l'approche basée sur les règles"""
     preprocessed_text = preprocess_french_text(text)
     
+    # Partie modèle ML
     X_input = vectorizer.transform([preprocessed_text])
     
-    positive_score = models['positive'].predict_proba(X_input)[0, 1]
-    negative_score = models['negative'].predict_proba(X_input)[0, 1]
+    # Utiliser les embeddings si disponibles
+    if embeddings is not None:
+        try:
+            # Calculer l'embedding moyen des mots pour ce texte
+            words = preprocessed_text.split()
+            word_vectors = []
+            for word in words:
+                if word in embeddings:
+                    word_vectors.append(embeddings[word])
+            
+            if word_vectors:
+                avg_embedding = np.mean(word_vectors, axis=0)
+                # Combiner TF-IDF et embeddings (simplifié)
+                X_input_dense = X_input.toarray()
+                X_combined = np.hstack((X_input_dense, avg_embedding.reshape(1, -1)))
+            else:
+                X_combined = X_input
+        except:
+            # Fallback en cas d'erreur avec les embeddings
+            X_combined = X_input
+    else:
+        X_combined = X_input
     
-    model_score = (positive_score - negative_score) * 0.2
+    # Modèle ML pour prédire les sentiments positifs et négatifs
+    positive_score = models['positive'].predict_proba(X_combined)[0, 1]
+    negative_score = models['negative'].predict_proba(X_combined)[0, 1]
     
+    # Calculer le score de base du modèle ML
+    model_score = (positive_score - negative_score) * 0.4  # Augmenté de 0.2 à 0.4
+    
+    # Détecter les mots-clés et expressions spécifiques
     keyword_score = detect_sentiment_keywords(text)
     
-    if keyword_score != 0:
-        final_score = model_score + (0.8 * keyword_score)
+    # Combiner les scores (règles améliorées)
+    if abs(keyword_score) > 0.7:  # Si le score basé sur les règles est fort
+        # Donner plus de poids au score des règles
+        final_score = model_score * 0.3 + keyword_score * 0.7
+    elif keyword_score != 0:
+        # Mélange équilibré
+        final_score = model_score * 0.5 + keyword_score * 0.5
     else:
-        final_score = model_score * 2
+        # S'appuyer principalement sur le modèle ML
+        final_score = model_score
     
+    # Normaliser entre -1 et 1
     final_score = max(-1.0, min(1.0, final_score))
     
     return round(float(final_score), 2)
 
+def load_word_embeddings():
+    """Charge ou crée des embeddings de mots pour le français"""
+    if os.path.exists(EMBEDDINGS_PATH):
+        print("Chargement des embeddings existants...")
+        with open(EMBEDDINGS_PATH, 'rb') as f:
+            return pickle.load(f)
+    
+    print("Aucun embedding trouvé. Utilisation du modèle sans embeddings.")
+    return None
+
 def train_model():
+    """Entraîne le modèle d'analyse de sentiments"""
     print("Récupération des tweets depuis la base de données...")
     tweets = get_all_tweets()
 
     if not tweets:
         print("Aucune donnée disponible pour l'entraînement.")
-        return None, None
+        return None, None, None
 
     print(f"Nombre total de tweets récupérés: {len(tweets)}")
     
+    # Préparation des données
     texts = [tweet["text"] for tweet in tweets]
-    positive_labels = [tweet["positive"] for tweet in tweets]
-    negative_labels = [tweet["negative"] for tweet in tweets]
+    positive_labels = np.array([tweet["positive"] for tweet in tweets])
+    negative_labels = np.array([tweet["negative"] for tweet in tweets])
 
     print("Prétraitement des textes...")
     preprocessed_texts = [preprocess_french_text(text) for text in texts]
 
+    # Créer les répertoires nécessaires
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    
+    # Charger ou initialiser les embeddings
+    embeddings = load_word_embeddings()
+    
     print("Vectorisation des textes...")
     vectorizer = TfidfVectorizer(
-        max_features=10000,  
-        min_df=2,  
-        ngram_range=(1, 3),  
-        stop_words=['le', 'la', 'les', 'un', 'une', 'des', 'et', 'ou', 'mais', 'donc', 'car', 'ni', 
-                   'ce', 'cette', 'ces', 'mon', 'ton', 'son', 'ma', 'ta', 'sa', 'mes', 'tes', 'ses',
-                   'notre', 'votre', 'leur', 'nos', 'vos', 'leurs', 'du', 'de', 'à', 'au', 'aux',
-                   'en', 'dans', 'sur', 'sous', 'par', 'pour', 'avec', 'sans', 'chez']
+        max_features=10000,
+        min_df=2,
+        ngram_range=(1, 3),
+        use_idf=True,
+        sublinear_tf=True
     )
     
-    X = vectorizer.fit_transform(preprocessed_texts)
+    X_tfidf = vectorizer.fit_transform(preprocessed_texts)
+    
+    # Si nous avons des embeddings, les combiner avec TF-IDF
+    if embeddings:
+        print("Combinaison de TF-IDF avec des embeddings de mots...")
+        # Créer des features d'embeddings (moyenne des embeddings de mots)
+        X_combined = X_tfidf
+    else:
+        X_combined = X_tfidf
     
     models = {}
     evaluations = {}
     
+    # ---- Entraînement du modèle pour les sentiments positifs ----
     print("Entraînement du modèle pour les sentiments positifs...")
+    
+    # Équilibrer les classes
+    pos_count = np.sum(positive_labels)
+    neg_count = len(positive_labels) - pos_count
+    class_weight_pos = {0: 1.0, 1: neg_count/pos_count if pos_count > 0 else 1.0}
+    
     X_train_pos, X_test_pos, y_train_pos, y_test_pos = train_test_split(
-        X, positive_labels, test_size=0.2, random_state=42, stratify=positive_labels
+        X_combined, positive_labels, test_size=0.2, random_state=42, stratify=positive_labels
     )
     
-    param_grid = {
-        'C': [0.1, 0.5, 1.0, 2.0, 5.0],
-        'class_weight': ['balanced', None],
-        'solver': ['liblinear', 'lbfgs']
-    }
+    # Créer un modèle d'ensemble
+    model_pos = create_ensemble_model()
     
-    grid_search_pos = GridSearchCV(
-        LogisticRegression(max_iter=1000),
-        param_grid,
-        cv=5,
-        scoring='f1',
-        n_jobs=-1
-    )
+    # Entraîner le modèle
+    model_pos.fit(X_train_pos, y_train_pos)
     
-    grid_search_pos.fit(X_train_pos, y_train_pos)
-    
-    print(f"Meilleurs paramètres pour le modèle positif: {grid_search_pos.best_params_}")
-    model_pos = grid_search_pos.best_estimator_
-    
+    # Évaluer le modèle
     y_pred_pos = model_pos.predict(X_test_pos)
+    y_proba_pos = model_pos.predict_proba(X_test_pos)[:, 1]
     
     evaluations['positive'] = {
         'accuracy': model_pos.score(X_test_pos, y_test_pos),
         'precision': precision_score(y_test_pos, y_pred_pos, zero_division=0),
         'recall': recall_score(y_test_pos, y_pred_pos, zero_division=0),
         'f1': f1_score(y_test_pos, y_pred_pos, zero_division=0),
-        'confusion_matrix': confusion_matrix(y_test_pos, y_pred_pos)
+        'confusion_matrix': confusion_matrix(y_test_pos, y_pred_pos),
+        'classification_report': classification_report(y_test_pos, y_pred_pos, output_dict=True)
     }
     
+    # ---- Entraînement du modèle pour les sentiments négatifs ----
     print("Entraînement du modèle pour les sentiments négatifs...")
+    
+    # Équilibrer les classes
+    neg_count = np.sum(negative_labels)
+    pos_count = len(negative_labels) - neg_count
+    class_weight_neg = {0: 1.0, 1: pos_count/neg_count if neg_count > 0 else 1.0}
+    
     X_train_neg, X_test_neg, y_train_neg, y_test_neg = train_test_split(
-        X, negative_labels, test_size=0.2, random_state=42, stratify=negative_labels
+        X_combined, negative_labels, test_size=0.2, random_state=42, stratify=negative_labels
     )
     
-    grid_search_neg = GridSearchCV(
-        LogisticRegression(max_iter=1000),
-        param_grid,
-        cv=5,
-        scoring='f1',
-        n_jobs=-1
-    )
+    # Créer un modèle d'ensemble
+    model_neg = create_ensemble_model()
     
-    grid_search_neg.fit(X_train_neg, y_train_neg)
+    # Entraîner le modèle
+    model_neg.fit(X_train_neg, y_train_neg)
     
-    print(f"Meilleurs paramètres pour le modèle négatif: {grid_search_neg.best_params_}")
-    model_neg = grid_search_neg.best_estimator_
-    
+    # Évaluer le modèle
     y_pred_neg = model_neg.predict(X_test_neg)
+    y_proba_neg = model_neg.predict_proba(X_test_neg)[:, 1]
     
     evaluations['negative'] = {
         'accuracy': model_neg.score(X_test_neg, y_test_neg),
         'precision': precision_score(y_test_neg, y_pred_neg, zero_division=0),
         'recall': recall_score(y_test_neg, y_pred_neg, zero_division=0),
         'f1': f1_score(y_test_neg, y_pred_neg, zero_division=0),
-        'confusion_matrix': confusion_matrix(y_test_neg, y_pred_neg)
+        'confusion_matrix': confusion_matrix(y_test_neg, y_pred_neg),
+        'classification_report': classification_report(y_test_neg, y_pred_neg, output_dict=True)
     }
     
+    # Afficher les évaluations
     for sentiment, eval_metrics in evaluations.items():
         print(f"\nÉvaluation du modèle {sentiment}:")
         print(f"Précision: {eval_metrics['accuracy']:.2%}")
@@ -382,8 +536,7 @@ def train_model():
         print(f"F1 score: {eval_metrics['f1']:.2%}")
         print(f"Matrice de confusion:\n{eval_metrics['confusion_matrix']}")
     
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    
+    # Générer des visualisations
     for sentiment, eval_metrics in evaluations.items():
         plt.figure(figsize=(8, 6))
         cm = eval_metrics['confusion_matrix']
@@ -397,11 +550,13 @@ def train_model():
         plt.savefig(os.path.join(REPORTS_DIR, f'confusion_matrix_{sentiment}.png'))
         plt.close()
     
+    # Créer un dictionnaire avec les modèles
     models = {
         'positive': model_pos,
         'negative': model_neg
     }
     
+    # Sauvegarder les modèles et le vectoriseur
     with open(MODEL_PATH, "wb") as model_file:
         pickle.dump(models, model_file)
 
@@ -429,13 +584,14 @@ def train_model():
     
     print("\nTests du modèle sur des exemples:")
     for example in test_examples:
-        score = analyze_sentiment_text(example, models, vectorizer)
+        score = analyze_sentiment_text(example, models, vectorizer, embeddings)
         sentiment = "POSITIF" if score > 0 else "NÉGATIF" if score < 0 else "NEUTRE"
         print(f"'{example}': {score} ({sentiment})")
     
-    return models, vectorizer
+    return models, vectorizer, embeddings
 
 def generate_evaluation_report(evaluations):
+    """Génère un rapport d'évaluation détaillé"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = os.path.join(REPORTS_DIR, f'evaluation_report_{timestamp}.txt')
     
@@ -455,6 +611,19 @@ def generate_evaluation_report(evaluations):
             cm = metrics['confusion_matrix']
             f.write(f"[[{cm[0][0]}, {cm[0][1]}]\n")
             f.write(f" [{cm[1][0]}, {cm[1][1]}]]\n\n")
+            
+            # Ajouter le rapport de classification détaillé
+            f.write("Rapport de classification détaillé:\n")
+            report = metrics['classification_report']
+            for class_name, values in report.items():
+                if class_name in ['0', '1']:
+                    class_label = 'Non-' + sentiment if class_name == '0' else sentiment.capitalize()
+                    f.write(f"  - {class_label}:\n")
+                    f.write(f"    Precision: {values['precision']:.2%}\n")
+                    f.write(f"    Recall: {values['recall']:.2%}\n")
+                    f.write(f"    F1-score: {values['f1-score']:.2%}\n")
+                    f.write(f"    Support: {values['support']}\n")
+            f.write("\n")
             
         f.write("ANALYSE DES PERFORMANCES\n")
         f.write("-" * 40 + "\n")
@@ -476,9 +645,11 @@ def generate_evaluation_report(evaluations):
                 if precision > recall:
                     f.write(f"- Le modèle {sentiment} a tendance à être trop conservateur ")
                     f.write(f"(precision: {precision:.2%}, recall: {recall:.2%})\n")
+                    f.write("  → Le modèle manque certains cas positifs mais ceux qu'il identifie sont plutôt corrects\n")
                 else:
                     f.write(f"- Le modèle {sentiment} a tendance à surestimer les cas positifs ")
                     f.write(f"(precision: {precision:.2%}, recall: {recall:.2%})\n")
+                    f.write("  → Le modèle trouve la plupart des cas positifs mais avec des faux positifs\n")
         
     print(f"Rapport d'évaluation généré: {report_path}")
 

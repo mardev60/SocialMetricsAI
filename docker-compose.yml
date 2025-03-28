@@ -15,7 +15,7 @@ services:
       - MYSQL_USER=socialmetrics
       - MYSQL_PASSWORD=socialmetrics
       - MYSQL_DATABASE=socialmetrics
-      - MYSQL_PORT=3307
+      - MYSQL_PORT=3306
     depends_on:
       - db
 

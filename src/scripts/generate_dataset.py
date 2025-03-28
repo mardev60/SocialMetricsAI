@@ -1,6 +1,6 @@
 import sqlite3
-from db import insert_tweet
 import random
+from src.database.database import insert_tweet
 
 positive_tweets = [
     "J'ai adoré ce film, c'était vraiment excellent !",
@@ -356,16 +356,14 @@ def generate_dataset():
         try:
             insert_tweet(tweet, 1, 0)
             count += 1
-        except sqlite3.IntegrityError:
+        except Exception:
             pass
     
     for tweet in negative_tweets:
         try:
             insert_tweet(tweet, 0, 1)
             count += 1
-            insert_tweet(tweet, 0, 1)
-            count += 1
-        except sqlite3.IntegrityError:
+        except Exception:
             pass
     
     for tweet in neutral_tweets:
@@ -374,33 +372,31 @@ def generate_dataset():
             negative = 1 - positive
             insert_tweet(tweet, positive, negative)
             count += 1
-        except sqlite3.IntegrityError:
+        except Exception:
             pass
     
     for i, tweet in enumerate(negation_tweets):
         try:
             if i < len(negation_tweets) // 2:
                 insert_tweet(tweet, 0, 1)
-                insert_tweet(tweet, 0, 1)
             else:
                 insert_tweet(tweet, 1, 0)
             count += 1
-        except sqlite3.IntegrityError:
+        except Exception:
             pass
     
     for i, tweet in enumerate(idiomatic_tweets):
         try:
             if i < len(idiomatic_tweets) // 2:     
                 insert_tweet(tweet, 0, 1)
-                insert_tweet(tweet, 0, 1)
             else:
                 insert_tweet(tweet, 1, 0)
             count += 1
-        except sqlite3.IntegrityError:
+        except Exception:
             pass
     
     print(f"Dataset généré avec succès ! {count} tweets insérés dans la base de données.")
-    print("Vous pouvez maintenant réentraîner votre modèle avec 'python model.py'")
+    print("Vous pouvez maintenant réentraîner votre modèle avec 'python -m src.scripts.retrain'")
 
 if __name__ == "__main__":
     generate_dataset() 
