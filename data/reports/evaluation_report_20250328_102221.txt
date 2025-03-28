@@ -1,0 +1,54 @@
+RAPPORT D'ÉVALUATION DU MODÈLE D'ANALYSE DE SENTIMENTS
+============================================================
+
+MODÈLE DE SENTIMENT POSITIVE
+----------------------------------------
+Précision globale: 96.89%
+Precision score: 98.65%
+Recall score: 93.59%
+F1 score: 96.05%
+
+Matrice de confusion:
+[[114, 1]
+ [5, 73]]
+
+Rapport de classification détaillé:
+  - Non-positive:
+    Precision: 95.80%
+    Recall: 99.13%
+    F1-score: 97.44%
+    Support: 115.0
+  - Positive:
+    Precision: 98.65%
+    Recall: 93.59%
+    F1-score: 96.05%
+    Support: 78.0
+
+MODÈLE DE SENTIMENT NEGATIVE
+----------------------------------------
+Précision globale: 95.85%
+Precision score: 93.44%
+Recall score: 100.00%
+F1 score: 96.61%
+
+Matrice de confusion:
+[[71, 8]
+ [0, 114]]
+
+Rapport de classification détaillé:
+  - Non-negative:
+    Precision: 100.00%
+    Recall: 89.87%
+    F1-score: 94.67%
+    Support: 79.0
+  - Negative:
+    Precision: 93.44%
+    Recall: 100.00%
+    F1-score: 96.61%
+    Support: 114.0
+
+ANALYSE DES PERFORMANCES
+----------------------------------------
+Forces et faiblesses:
+- Modèle positive: Bonnes performances (F1 = 96.05%)
+- Modèle negative: Bonnes performances (F1 = 96.61%)
